@@ -110,23 +110,62 @@ namespace MathString
 		public const string NumberRegex = @"-?(?:\d+(?:\.\d+)?)";
 		public const string DecimalRegex = @"-?(?:\d+(?:[,\.]\d+)?)";
 		public const string TextRegex = @"[a-zA-Z_]+[_\w]*";
-		public const string VariableRegex = @"\$("+TextRegex+");";
-		public const string FunctionRegex = @"\@("+TextRegex + @") ?\((" + NumberRegex + @")?(?:, ?(" + NumberRegex + @"))*\)";
+		public const string VariableRegex = @"\$(?<nom>"+TextRegex+");";
+		public const string FunctionRegex = @"\@(?<nom>" + TextRegex + @") ?\((?<param1>" + NumberRegex + @")?(?:, ?(?<autres>" + NumberRegex + @"))*\)";
+		
 		public delegate string MathAction(string match);
+		public delegate float Function(params float[] values);
+		
 		private readonly Dictionary<Regex, MathStringTemplate> _mathFunc;
+
 		private readonly Dictionary<Variable, string> _variables;
 		private static readonly Dictionary<Variable, string> Variables;
+		private readonly Dictionary<string, Function> _functions;
+		private static readonly Dictionary<string, Function> Functions;
 		#endregion
 
 		#region Constructeur
 		static MathString()
 		{
+			Random rnd = new Random();
 			Variables = new Dictionary<Variable, string>();
+			Functions = new Dictionary<string, Function>
+				#region Functions
+
+				{
+					{
+						"random", v =>
+							{
+								if (v.Length == 0)
+									return (float)rnd.NextDouble();
+								if (v.Length == 1)
+									return rnd.Next((int)v[0]);
+								if (v.Length == 2)
+									return rnd.Next((int)v[0], (int)v[1]);
+								throw new Exception("usage: @Random([min[, max]])");
+							}
+					},
+					{
+						"abs", v =>
+							{
+								if (v.Length == 1)
+									if (v[0] < 0)
+										return -v[0];
+									else
+										return v[0];
+								throw new Exception("usage: @Abs(<value>)");
+							}
+					}
+				};
+
+			#endregion
+
 		}
 
 		public MathString()
 		{
 			_variables = new Dictionary<Variable, string>();
+			_functions = new Dictionary<string, Function>();
 
 			Func<string, MathAction> action = c =>
 				{
@@ -213,6 +252,20 @@ namespace MathString
 				AddGlobalVariable(variable);
 		}
 
+		public void AddFunction(string name, Function function)
+		{
+			if (_functions.ContainsKey(name))
+				throw new Exception("Cette fonction existe deja: " + name);
+			_functions.Add(name, function);
+		}
+
+		public static void AddGlobalVariable(string name, Function function)
+		{
+			if (Functions.ContainsKey(name))
+				throw new Exception("Cette fonction existe deja: " + name);
+			Functions.Add(name, function);
+		}
+
 		public string Convert(string text, params Variable[] variables)
 		{
 			text = text.Replace(" ", "");
@@ -222,6 +275,8 @@ namespace MathString
 				text = text.Replace(ma.Value, pair.Value.Action(ma.Value));
 
 			text = FindVariables(text, variables);
+
+			text = FindFunctions(text);
 
 			return FindParenthesis(ref text, max, '(', ')') ? text : Calculate(text, max);
 		}
@@ -237,11 +292,11 @@ namespace MathString
 				Variable variable = null;
 
 				if (variables.Count > 0)
-					variable = variables.FirstOrDefault(v => v.Name == ma.Groups[1].Value);
+					variable = variables.FirstOrDefault(v => v.Name == ma.Groups["nom"].Value.ToLower());
 
 				variable = variable ??
-						   (_variables.Keys.FirstOrDefault(v => v.Name == ma.Groups[1].Value) ??
-							Variables.Keys.FirstOrDefault(v => v.Name == ma.Groups[1].Value));
+						   (_variables.Keys.FirstOrDefault(v => v.Name == ma.Groups["nom"].Value.ToLower()) ??
+							Variables.Keys.FirstOrDefault(v => v.Name == ma.Groups["nom"].Value.ToLower()));
 
 				if (variable != null)
 				{
@@ -250,12 +305,52 @@ namespace MathString
 				}
 				else
 				{
-					errors.Add(ma.Groups[1].Value);
+					errors.Add(string.Format("{0}: c({1})", ma.Groups["nom"].Value, ma.Index));
 					cont = true;
 				}
 			}
 			if (errors.Count > 0)
 				throw new Exception(string.Format("Impossible de trouver {0} variable{1} : {2}",
+												  errors.Count == 1 ? "la" : "les",
+												  errors.Count > 1 ? "s" : "",
+												  errors.Join(", ")));
+			return text;
+		}
+
+		private string FindFunctions(string text)
+		{
+			Regex funcRegex = new Regex(FunctionRegex);
+			IList<string> errors = new List<string>();
+			bool cont;
+
+			for (var ma = funcRegex.Match(text); ma.Success; ma = (cont) ? ma.NextMatch() : funcRegex.Match(text))
+			{
+				var func = _functions.FirstOrDefault(f => f.Key == ma.Groups["nom"].Value.ToLower());
+				if (func.Equals(default(KeyValuePair<string, Function>)))
+					func = Functions.FirstOrDefault(f => f.Key == ma.Groups["nom"].Value.ToLower());
+
+				if (!func.Equals(default(KeyValuePair<string, Function>)))
+				{
+					List<float> values = new List<float>();
+					if (ma.Groups["param1"].Success)
+					{
+						values.Add(float.Parse(ma.Groups["param1"].Value.Replace('.', ',').Trim()));
+						values.AddRange(from Capture capture in ma.Groups["autres"].Captures
+										select float.Parse(capture.Value.Replace('.', ',').Trim()));
+					}
+
+					text = text.Replace(ma.Value, func.Value(values.ToArray()).ToString().Replace(',', '.'));
+
+					cont = false;
+				}
+				else
+				{
+					errors.Add(string.Format("{0}: c({1})", ma.Groups["nom"].Value, ma.Index));
+					cont = true;
+				}
+			}
+			if (errors.Count > 0)
+				throw new Exception(string.Format("Impossible de trouver {0} fonction{1} : {2}",
 												  errors.Count == 1 ? "la" : "les",
 												  errors.Count > 1 ? "s" : "",
 												  errors.Join(", ")));
