@@ -43,6 +43,12 @@
     <Compile Include="MathString.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\CSharpHelper\CSharpHelper\CSharpHelper.csproj">
+      <Project>{4603ED6E-4395-4866-BFDD-75363B3801AE}</Project>
+      <Name>CSharpHelper</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
