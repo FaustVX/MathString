@@ -14,7 +14,7 @@ namespace MathString.Test
 				string formule = line;
 				try
 				{
-					string result = m.Convert(formule);
+					string result = m.Convert(formule, @var => new MathString.VariableConvertor((float)new Random().NextDouble(), true));
 					Console.WriteLine("\"{0}\" = {1}", formule, result);
 				}
 				catch (Exception ex)

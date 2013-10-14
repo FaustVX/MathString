@@ -104,6 +104,35 @@ namespace MathString
 				return (obj.Name.GetHashCode() + obj.Value.GetHashCode()).GetHashCode();
 			}
 		}
+
+		public class VariableConvertor
+		{
+			#region Attributs
+			private readonly bool _success;
+			private readonly float _value;
+			#endregion
+
+			#region Constructeur
+			public VariableConvertor(float value, bool success)
+			{
+				_value = value;
+				_success = success;
+			}
+
+			#endregion
+
+			#region Proprietes
+			public float Value
+			{
+				get { return _value; }
+			}
+
+			public bool Success
+			{
+				get { return _success; }
+			}
+			#endregion
+		}
 		#endregion
 
 		#region Attributs
@@ -266,7 +295,7 @@ namespace MathString
 			Functions.Add(name, function);
 		}
 
-		public string Convert(string text, params Variable[] variables)
+		public string Convert(string text, Func<string, VariableConvertor> variableConvertor, params Variable[] variables)
 		{
 			text = text.Replace(" ", "");
 			int max = _mathFunc.Values.Max(t => t.Weigth);
@@ -274,14 +303,14 @@ namespace MathString
 			for (Match ma = pair.Key.Match(text); ma.Success; ma = ma.NextMatch())
 				text = text.Replace(ma.Value, pair.Value.Action(ma.Value));
 
-			text = FindVariables(text, variables);
+			text = FindVariables(text, variables, variableConvertor);
 
 			text = FindFunctions(text);
 
 			return FindParenthesis(ref text, max, '(', ')') ? text : Calculate(text, max);
 		}
 
-		private string FindVariables(string text, ICollection<Variable> variables)
+		private string FindVariables(string text, ICollection<Variable> variables, Func<string, VariableConvertor> variableConvertor)
 		{
 			Regex varRegex = new Regex(VariableRegex);
 			IList<string> errors = new List<string>();
@@ -305,6 +334,13 @@ namespace MathString
 				}
 				else
 				{
+					var varError = variableConvertor(ma.Groups["nom"].Value);
+					if (varError.Success)
+					{
+						text = text.Replace(ma.Value, varError.Value.ToString().Replace(',', '.'));
+						cont = false;
+						continue;
+					}
 					errors.Add(string.Format("{0}: c({1})", ma.Groups["nom"].Value, ma.Index));
 					cont = true;
 				}
